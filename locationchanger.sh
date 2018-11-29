@@ -26,8 +26,10 @@ ts() {
     date +"[%Y-%m-%d %H:%M:%S] ${*}"
 }
 
-# get the SSID of the current Wi-Fi network
-SSID=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I | grep ' SSID' | cut -d : -f 2- | sed 's/^[ ]*//')
+# get the SSID & BSSID of the current Wi-Fi network
+WIFI_INFO=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I)
+SSID=$(echo "${WIFI_INFO}" | grep ' SSID' | cut -d : -f 2- | sed 's/^[ ]*//')
+BSSID=$(echo "${WIFI_INFO}" | grep ' BSSID' | cut -d : -f 2- | sed 's/^[ ]*//' | sed 's/[[:<:]]\([0-9a-zA-Z]\)[[:>:]]/0\1/g' | tr '[:lower:]' '[:upper:]')
 
 # escape the SSID string for better string handling in our logic below
 ESSID=$(echo "${SSID}" | sed 's/[.[\*^$]/\\\\&/g')
@@ -43,11 +45,16 @@ ts "Connected to '${SSID}'"
 
 # if a config file exists, consult it first
 if [ -f ${CONFIG_FILE} ]; then
-    CONFIG_LOCATION=$(grep "^${ESSID}=" ${CONFIG_FILE} | cut -d = -f 2)
-    if [ "${CONFIG_LOCATION}" != "" ]; then
-        NEW_LOCATION=${CONFIG_LOCATION}
+    SSID_CONFIG_LOCATION=$(grep "^${ESSID}=" ${CONFIG_FILE} | cut -d = -f 2)
+    BSSID_CONFIG_LOCATION=$(grep -i "^${BSSID}=" ${CONFIG_FILE} | cut -d = -f 2) # we want `grep` to be case-insensitive here since users may put in lower or upper case for the BSSID/MAC address
+    if [ "${BSSID_CONFIG_LOCATION}" != "" ]; then
+        NEW_LOCATION=${BSSID_CONFIG_LOCATION}
+        NOTIFICATION_STRING="BSSID '${BSSID}' (SSID '${SSID}') has a manually configured Location; changing from '${CURRENT_LOCATION}' to '${NEW_LOCATION}'"
+        ts "Will switch the Location to '${NEW_LOCATION}' (BSSID found in configuration file)"
+    elif [ "${SSID_CONFIG_LOCATION}" != "" ]; then
+        NEW_LOCATION=${SSID_CONFIG_LOCATION}
         NOTIFICATION_STRING="SSID '${SSID}' has a manually configured Location; changing from '${CURRENT_LOCATION}' to '${NEW_LOCATION}'"
-        ts "Will switch the Location to '${NEW_LOCATION}' (found in configuration file)"
+        ts "Will switch the Location to '${NEW_LOCATION}' (SSID found in configuration file)"
     fi
 fi
 
